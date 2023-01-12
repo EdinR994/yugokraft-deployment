@@ -1,0 +1,141 @@
+version: '3.3'
+
+services:
+  admin:
+    container_name: admin
+    build:
+      context: ../yugokraft-admin
+      dockerfile: Dockerfile
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.admin.rule=Host(`yugokraft-admin.localhost`)"
+      - "traefik.http.routers.admin.entrypoints=web"
+      # - "traefik.http.routers.admin.tls=true"
+      # - "traefik.http.routers.admin.tls.certresolver=production"
+    environment:
+      REACT_APP_API_URL: http://yugokraft-api.localhost
+    depends_on:
+      - api
+      - traefik
+    networks:
+      - net
+
+  web:
+    container_name: web
+    build:
+      context: ../yugokraft-web
+      dockerfile: Dockerfile
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`yugokraft.localhost`)"
+      - "traefik.http.routers.web.entrypoints=web"
+      # - "traefik.http.routers.web.tls=true"
+      # - "traefik.http.routers.web.tls.certresolver=production"
+    environment:
+      REACT_APP_API_URL: http://yugokraft-api.localhost
+    depends_on:
+      - api
+      - traefik
+    networks:
+      - net
+
+  api:
+    container_name: api
+    build:
+      context: ../yugokraft-backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`yugokraft-api.localhost`)"
+      - "traefik.http.routers.api.entrypoints=web"
+      # - "traefik.http.routers.api.tls=true"
+      # - "traefik.http.routers.api.tls.certresolver=production"
+      - "traefik.http.middlewares.corsHeaders.headers.addVaryHeader=true"
+      - "traefik.http.middlewares.corsHeaders.headers.accessControlAllowHeaders=Authorization, Origin, X-Requested-With, Content-Type, Accept"
+      - "traefik.http.middlewares.corsHeaders.headers.accessControlAllowCredentials=true"
+      - "traefik.http.middlewares.corsHeaders.headers.stsSeconds=15768000"
+      - "traefik.http.middlewares.corsHeaders.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.corsHeaders.headers.accessControlExposeHeaders=Content-Disposition"
+      - "traefik.http.middlewares.corsHeaders.headers.accessControlAllowMethods=GET, POST, OPTIONS, HEAD, PATCH, DELETE"
+      - "traefik.http.middlewares.corsHeaders.headers.accessControlAllowOriginList=http://yugokraft.localhost,http://yugokraft-admin.localhost"
+      - "traefik.http.middlewares.corsHeaders.headers.accessControlAllowOriginListRegex=yugokraft.*\\.localhost"
+      - "traefik.http.routers.api.middlewares=corsHeaders"
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: ${DATABASE_PORT}
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_DB: ${DATABASE_DB}
+    depends_on:
+      - db
+      - traefik
+    networks:
+      - net
+
+  db:
+    restart: always
+    container_name: postgres
+    image: postgres:12.4
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=30"
+      - "-c"
+      - "shared_buffers=1GB"
+      - "-c"
+      - "effective_cache_size=3GB"
+      - "-c"
+      - "maintenance_work_mem=256MB"
+      - "-c"
+      - "checkpoint_completion_target=0.7"
+      - "-c"
+      - "wal_buffers=16MB"
+      - "-c"
+      - "default_statistics_target=100"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "effective_io_concurrency=200"
+      - "-c"
+      - "work_mem=17476kB"
+      - "-c"
+      - "min_wal_size=1GB"
+      - "-c"
+      - "max_wal_size=4GB"
+      - "-c"
+      - "max_worker_processes=4"
+      - "-c"
+      - "max_parallel_workers_per_gather=2"
+      - "-c"
+      - "max_parallel_workers=4"
+      - "-c"
+      - "max_parallel_maintenance_workers=2"
+    environment:
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_DB}
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    depends_on:
+      - traefik
+    networks:
+      - net
+
+  traefik:
+    image: traefik:v2.9
+    ports:
+      - "80:80"
+      # - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.yml:/etc/traefik/traefik.yml
+      - ssl-certs:/ssl-certs
+    networks:
+      - net
+
+volumes:
+  ssl-certs:
+    driver: local
+
+networks:
+  net:
+    driver: bridge
